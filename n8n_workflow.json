@@ -1,0 +1,46 @@
+{
+  "name": "Nightly Scraper Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": "cron",
+        "cronTime": "0 21 * * *",
+        "timezone": "Asia/Kolkata"
+      },
+      "name": "Run at 9 PM IST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd /path/to/your/project/job-automation-system && node src/scrapers/techcrunchScraper.js"
+      },
+      "name": "Execute Scraper Script",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        700,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Run at 9 PM IST": {
+      "main": [
+        [
+          {
+            "node": "Execute Scraper Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}

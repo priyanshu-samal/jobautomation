@@ -1,0 +1,49 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Company {
+  id              Int      @id @default(autoincrement())
+  name            String
+  domain          String?  @unique
+  sourceUrl       String?  @unique // The URL of the source article/news
+  sector          String?
+  fundingStage    String?
+  fundingAmount   Int?
+  lastFundingDate DateTime?
+  source          String?  // e.g., TechCrunch, YC, Scraped
+  createdAt       DateTime @default(now())
+  contacts        Contact[]
+}
+
+model Contact {
+  id                Int        @id @default(autoincrement())
+  company           Company    @relation(fields: [companyId], references: [id])
+  companyId         Int
+  name              String?
+  role              String?
+  email             String?    @unique
+  linkedinUrl       String?    @unique
+  enrichmentSource  String?    // e.g., GoogleSearch, Scraped
+  createdAt         DateTime   @default(now())
+  outreaches        Outreach[]
+}
+
+model Outreach {
+  id             Int       @id @default(autoincrement())
+  contact        Contact   @relation(fields: [contactId], references: [id])
+  contactId      Int
+  channel        String    // 'email', 'linkedin', 'x'
+  messageSubject String?
+  messageBody    String
+  status         String    @default("queued") // queued, sent, replied, ghosted, rejected, interview
+  attemptCount   Int       @default(0)
+  lastAttempt    DateTime? @updatedAt
+  followupAt     DateTime?
+  createdAt      DateTime  @default(now())
+}
