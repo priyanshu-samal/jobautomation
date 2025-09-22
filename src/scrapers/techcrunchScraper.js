@@ -1,9 +1,22 @@
 const fetch = require('node-fetch');
 const { XMLParser } = require('fast-xml-parser');
 const { PrismaClient } = require('@prisma/client');
+const { google_web_search } = require('../../default_api'); // This is a placeholder for the actual tool call
 
 const prisma = new PrismaClient();
 const TECHCRUNCH_FUNDING_RSS_URL = 'https://techcrunch.com/tag/funding/feed/';
+
+async function extractCompanyName(title) {
+    // This is a placeholder for calling the Gemini API via the google_web_search tool.
+    // In a real environment, this would be an API call.
+    const prompt = `From the following news headline, extract only the name of the startup or company being discussed. If no company name is present, respond with \"N/A\". Headline: \"${title}\"`
+    // const result = await google_web_search({ query: prompt });
+    // For now, we'll simulate this with a simple heuristic.
+    const nameMatch = title.match(/^[A-Z][a-zA-Z0-9\s,]+/);
+    const companyName = nameMatch ? nameMatch[0].trim() : title;
+    if (companyName.split(' ').length > 5) return 'N/A';
+    return companyName;
+}
 
 async function scrapeAndSaveTechCrunchNews() {
     try {
@@ -28,16 +41,17 @@ async function scrapeAndSaveTechCrunchNews() {
         const articles = jsonObj.rss.channel.item;
         console.log(`Found ${articles.length} articles.`);
 
-        let newCompanies = 0;
         for (const article of articles) {
-            // A simple heuristic to extract a potential company name from the title.
-            // This is a placeholder and should be replaced with a more robust AI-based extraction.
-            const nameMatch = article.title.match(/^[A-Z][a-zA-Z0-9\s,]+/);
-            const companyName = nameMatch ? nameMatch[0].trim() : article.title;
+            const companyName = await extractCompanyName(article.title);
 
-            const result = await prisma.company.upsert({
+            if (companyName === 'N/A') {
+                console.log(`Skipping article, no company name found in title: "${article.title}"`);
+                continue;
+            }
+
+            await prisma.company.upsert({
                 where: { sourceUrl: article.link },
-                update: {},
+                update: { name: companyName },
                 create: {
                     name: companyName,
                     sourceUrl: article.link,
@@ -45,10 +59,6 @@ async function scrapeAndSaveTechCrunchNews() {
                     lastFundingDate: new Date(article.pubDate),
                 }
             });
-
-            // The 'upsert' operation doesn't directly tell us if it created or updated.
-            // A simple way to check if a new record was created is to see if the createdAt and updatedAt timestamps are identical.
-            // However, for this log, we'll just log the title.
         }
 
         console.log(`Finished processing articles.`);
