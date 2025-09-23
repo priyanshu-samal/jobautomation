@@ -75,59 +75,88 @@ async function sendLinkedInRequest() {
         console.log(`Navigating to profile: ${outreach.contact.linkedinUrl}`);
         await page.goto(outreach.contact.linkedinUrl, { waitUntil: 'domcontentloaded' }); // Changed from networkidle2
 
-        // --- Connection Request Logic (using text content) ---
-        console.log('Searching for a way to connect...');
+        // --- Connection Request Logic ---
+        console.log('Searching for a way to connect or message...');
         let connectionSent = false;
 
         try {
-            // Strategy 1: Look for a direct "Connect" button
-            let directConnectButton = await findButtonByText(page, "Connect");
-
-            if (directConnectButton) {
-                console.log('Found direct connect button.');
-                await directConnectButton.click();
-            } else {
-                // Strategy 2: Look for "More" button, then "Connect"
-                console.log('Direct connect not found, trying "More" menu.');
-                let moreButton = await findButtonByText(page, "More");
-                if (moreButton) {
-                    await moreButton.click();
-                    await delay(1000);
-                    let connectInMenu = await findMenuItemByText(page, "Connect");
-                    if (connectInMenu) {
-                        await connectInMenu.click();
-                        console.log('Found connect button in "More" menu.');
-                    } else {
-                        throw new Error('"Connect" not found in "More" menu.');
-                    }
-                } else {
-                     throw new Error('No direct Connect or More button found.');
-                }
-            }
-
-            // Handle the connection modal
-            await delay(1500); // Wait for modal to appear
-            await page.click('button[aria-label="Add a note"]');
-            console.log('"Add a note" button clicked.');
-
-            await delay(500);
-            await page.type('textarea[name="message"]', outreach.messageBody);
-            console.log('Message pasted into textarea.');
-
-            await delay(1000);
-            await page.click('button[aria-label="Send now"]');
-            console.log('Send button clicked. Connection request sent!');
-            connectionSent = true;
-
-        } catch (e) {
-            console.log(`Connection attempt failed: ${e.message}`);
-            // Strategy 3: Check if connection is already pending
+            // Strategy 1: Check if connection is already pending
             let pendingButton = await findButtonByText(page, "Pending");
             if (pendingButton) {
                 console.log('Connection is already pending. Marking as sent.');
                 connectionSent = true; // Treat as sent
             } else {
-                throw e; // Re-throw if it's not a pending case
+                // Strategy 2: Look for a direct "Connect" button
+                let directConnectButton = await findButtonByText(page, "Connect");
+                if (directConnectButton) {
+                    console.log('Found direct connect button.');
+                    await directConnectButton.click();
+                    await handleConnectionModal(page, outreach.messageBody);
+                    connectionSent = true;
+                } else {
+                    // Strategy 3: Look for "More" button, then "Connect"
+                    console.log('Direct connect not found, trying "More" menu.');
+                    let moreButton = await findButtonByText(page, "More");
+                    if (moreButton) {
+                        await moreButton.click();
+                        await delay(1000);
+                        let connectInMenu = await findMenuItemByText(page, "Connect");
+                        if (connectInMenu) {
+                            console.log('Found connect button in "More" menu.');
+                            await connectInMenu.click();
+                            await handleConnectionModal(page, outreach.messageBody);
+                            connectionSent = true;
+                        } else {
+                            // If "Connect" is not in the "More" menu, check for "Follow"
+                            let followInMenu = await findMenuItemByText(page, "Follow");
+                            if (followInMenu) {
+                                console.log('Found "Follow" in the "More" menu. This profile likely does not allow direct connections. Skipping.');
+                                // Close the "More" menu to be clean
+                                await page.keyboard.press('Escape');
+                            } else {
+                                throw new Error('"Connect" not found in "More" menu.');
+                            }
+                        }
+                    } else {
+                        // Strategy 4: Look for a "Follow" button (often replaces "Connect")
+                        let followButton = await findButtonByText(page, "Follow");
+                        if (followButton) {
+                            console.log('Found "Follow" button. This profile likely does not allow direct connections. Skipping.');
+                        } else {
+                            throw new Error('No Connect, More, or Follow button found.');
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.log(`Connection attempt failed: ${e.message}`);
+            // If any of the above fails, we just log it. The outreach will remain 'queued'.
+        }
+
+        // Helper function to handle the connection modal
+        async function handleConnectionModal(page, message) {
+            await delay(1500); // Wait for modal to appear
+            try {
+                await page.click('button[aria-label="Add a note"]');
+                console.log('"Add a note" button clicked.');
+                await delay(500);
+                await page.type('textarea[name="message"]', message);
+                console.log('Message pasted into textarea.');
+                await delay(1000);
+                await page.click('button[aria-label="Send now"]');
+                console.log('Send button clicked. Connection request sent!');
+            } catch (modalError) {
+                console.log('Could not send connection with a note. Trying to send without a note.');
+                // The "Add a note" button might not exist for all connection types
+                // Or the modal is different. We'll try to just send.
+                try {
+                    // The primary button in the modal is likely the send button
+                    await page.click('.artdeco-button--primary');
+                    console.log('Sent connection request without a note.');
+                } catch (sendError) {
+                     console.error('Failed to send connection request in modal:', sendError);
+                     throw sendError; // re-throw to be caught by the outer try-catch
+                }
             }
         }
 
